@@ -4,6 +4,7 @@ import curses
 import subprocess
 import sys
 import time
+from .remote import load_profile
 
 
 OPTIONS = [
@@ -17,6 +18,7 @@ OPTIONS = [
     ("Worker logs", ["control", "logs"]),
     ("Stop worker", ["control", "stop"]),
     ("Start worker", ["control", "start"]),
+    ("Refresh dashboard", ["health"]),
     ("Quit", None),
 ]
 
@@ -67,10 +69,13 @@ def _main(stdscr) -> None:
     while True:
         stdscr.erase()
         stdscr.addstr(0, 0, "Telegram-X Manager", curses.A_BOLD)
-        stdscr.addstr(1, 0, "Use arrows, Enter to select, q to quit")
+        profile = load_profile()
+        target = f"SSH: {profile.username}@{profile.host}:{profile.port}" if profile else "SSH: not connected"
+        stdscr.addstr(1, 0, target[: curses.COLS - 1])
+        stdscr.addstr(2, 0, "Arrows: navigate  Enter: select  q: quit")
         for idx, (label, _) in enumerate(OPTIONS):
             attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
-            stdscr.addstr(idx + 3, 2, label[: curses.COLS - 3], attr)
+            stdscr.addstr(idx + 4, 2, label[: curses.COLS - 3], attr)
         stdscr.refresh()
         key = stdscr.getch()
         if key in (ord("q"), ord("Q")):
@@ -84,7 +89,9 @@ def _main(stdscr) -> None:
             if command is None:
                 return
             curses.curs_set(1)
-            if command[0] in ("connect", "creds", "xlogin"):
+            if command[0] == "connect" and load_profile():
+                result = _run(stdscr, label, ["status"])
+            elif command[0] in ("connect", "creds", "xlogin"):
                 result = _run_interactive(stdscr, command)
             else:
                 result = _run(stdscr, label, command)
