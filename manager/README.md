@@ -132,14 +132,15 @@ After any mode, `status` confirms the link and `health` shows the full picture.
 
 ## Interactive terminal UI (`tui`)
 
-Launch the menu-driven interface (standard-library `curses`, no extra dependency):
+Launch the responsive Textual dashboard:
 
 ```bash
 ./.venv/bin/python -m telegram_x_manager tui
 ```
 
-Use Up/Down and Enter to open health, activity history, credentials, X login,
-SSH connect, deploy, worker status/logs, and start/stop actions. Press `q` to quit.
+The home screen automatically shows Telegram, X session, SSH, and worker status.
+Use the four actions to connect SSH, save the Telegram token, log into X, and
+start or stop the remote worker. Press `R` to refresh and `Q` to quit.
 
 Once the link is up and you've captured both the X session (`xlogin`) and the
 Telegram credentials (`creds`), one command pushes the worker to the VPS and

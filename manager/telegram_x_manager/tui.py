@@ -1,105 +1,201 @@
 from __future__ import annotations
 
-import curses
-import subprocess
-import sys
-import time
-from .remote import load_profile
+from textual import work
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Button, Footer, Header, Input, Label, Static
+
+from . import activity, config, creds
 
 
-OPTIONS = [
-    ("Health", ["health"]),
-    ("Activity history", ["history"]),
-    ("Telegram credentials", ["creds"]),
-    ("X browser login", ["xlogin"]),
-    ("Connect SSH", ["connect"]),
-    ("Deploy worker", ["deploy"]),
-    ("Worker status", ["control", "status"]),
-    ("Worker logs", ["control", "logs"]),
-    ("Stop worker", ["control", "stop"]),
-    ("Start worker", ["control", "start"]),
-    ("Refresh dashboard", ["health"]),
-    ("Quit", None),
-]
+class FormScreen(ModalScreen[dict[str, str] | None]):
+    def __init__(self, kind: str) -> None:
+        super().__init__()
+        self.kind = kind
 
-
-def _run(stdscr, label: str, argv: list[str]) -> str:
-    proc = subprocess.Popen([sys.executable, "-m", "telegram_x_manager", *argv],
-                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    started = time.monotonic()
-    frames = "|/-\\"
-    while proc.poll() is None:
-        elapsed = int(time.monotonic() - started)
-        stdscr.erase()
-        stdscr.addstr(0, 0, "Telegram-X Manager", curses.A_BOLD)
-        stdscr.addstr(2, 2, f"{frames[elapsed % len(frames)]} {label} is running... ({elapsed}s)")
-        stdscr.addstr(4, 2, "Network operations can take a few seconds. Please wait.")
-        stdscr.refresh()
-        time.sleep(0.2)
-    output = proc.stdout.read() if proc.stdout else ""
-    return output.strip() or f"Command exited with {proc.returncode}."
-
-
-def _run_interactive(stdscr, argv: list[str]) -> str:
-    """Run a prompt-driven command with the terminal returned to the user."""
-    curses.endwin()
-    try:
-        proc = subprocess.run([sys.executable, "-m", "telegram_x_manager", *argv],
-                              text=True)
-        return f"Command finished (exit {proc.returncode})."
-    finally:
-        stdscr.clear()
-        stdscr.refresh()
-
-
-def _page(stdscr, title: str, body: str) -> None:
-    stdscr.erase()
-    stdscr.addstr(0, 0, title[: curses.COLS - 1], curses.A_BOLD)
-    lines = body.splitlines() or [""]
-    for row, line in enumerate(lines[: curses.LINES - 3], 2):
-        stdscr.addstr(row, 0, line[: curses.COLS - 1])
-    stdscr.addstr(curses.LINES - 1, 0, "Press Esc to return"[: curses.COLS - 1])
-    stdscr.refresh()
-    while stdscr.getch() != 27:
-        pass
-
-
-def _main(stdscr) -> None:
-    curses.curs_set(0)
-    selected = 0
-    while True:
-        stdscr.erase()
-        stdscr.addstr(0, 0, "Telegram-X Manager", curses.A_BOLD)
-        profile = load_profile()
-        target = f"SSH: {profile.username}@{profile.host}:{profile.port}" if profile else "SSH: not connected"
-        stdscr.addstr(1, 0, target[: curses.COLS - 1])
-        stdscr.addstr(2, 0, "Arrows: navigate  Enter: select  q: quit")
-        for idx, (label, _) in enumerate(OPTIONS):
-            attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
-            stdscr.addstr(idx + 4, 2, label[: curses.COLS - 3], attr)
-        stdscr.refresh()
-        key = stdscr.getch()
-        if key in (ord("q"), ord("Q")):
-            return
-        if key == curses.KEY_UP:
-            selected = (selected - 1) % len(OPTIONS)
-        elif key == curses.KEY_DOWN:
-            selected = (selected + 1) % len(OPTIONS)
-        elif key in (curses.KEY_ENTER, 10, 13):
-            label, command = OPTIONS[selected]
-            if command is None:
-                return
-            curses.curs_set(1)
-            if command[0] == "connect" and load_profile():
-                result = _run(stdscr, label, ["status"])
-            elif command[0] in ("connect", "creds", "xlogin"):
-                result = _run_interactive(stdscr, command)
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Label("Connect to worker" if self.kind == "ssh" else "Telegram credentials", classes="dialog-title")
+            if self.kind == "ssh":
+                yield Input(placeholder="Host or SSH alias", id="host")
+                yield Input(placeholder="Username (for example root)", id="username")
+                yield Input(value="22", placeholder="Port", id="port")
+                yield Input(placeholder="Password (optional)", password=True, id="password")
             else:
-                result = _run(stdscr, label, command)
-            _page(stdscr, label, result)
-            curses.curs_set(0)
+                yield Input(placeholder="Bot token", password=True, id="token")
+                yield Input(placeholder="Chat ID (optional)", id="chat_id")
+            with Horizontal(classes="dialog-actions"):
+                yield Button("Cancel", id="cancel")
+                yield Button("Save", id="submit", variant="primary")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel":
+            self.dismiss(None)
+            return
+        ids = ("host", "username", "port", "password") if self.kind == "ssh" else ("token", "chat_id")
+        values = {key: self.query_one(f"#{key}", Input).value.strip() for key in ids}
+        if self.kind == "ssh":
+            values["username"] = values["username"] or "root"
+            values["port"] = values["port"] or "22"
+        self.dismiss(values)
+
+
+class ManagerApp(App):
+    TITLE = "Telegram-X Manager"
+    SUB_TITLE = "Worker control"
+    CSS = """
+    Screen { background: #10151c; color: #e8edf2; }
+    Header { background: #17212b; }
+    #content { padding: 1 3; }
+    #intro { color: #9fb0bf; margin-bottom: 1; }
+    #statuses { height: 9; }
+    .status { width: 1fr; height: 7; margin-right: 1; padding: 1 2;
+              background: #18232e; border: round #33485c; }
+    .status-title { text-style: bold; color: #69d2e7; }
+    .status-value { margin-top: 1; text-style: bold; }
+    .status-detail { color: #9fb0bf; margin-top: 1; }
+    #actions { height: 5; margin-top: 1; }
+    #actions Button { width: 1fr; margin-right: 1; height: 3; }
+    #message { margin-top: 1; padding: 1 2; height: 4; background: #131c25;
+               border-left: thick #69d2e7; color: #c7d4df; }
+    ModalScreen { align: center middle; background: #000000 60%; }
+    #dialog { width: 62; height: auto; padding: 1 2; background: #18232e;
+              border: round #69d2e7; }
+    .dialog-title { text-style: bold; color: #69d2e7; margin-bottom: 1; }
+    #dialog Input { margin-bottom: 1; }
+    .dialog-actions { height: 3; align-horizontal: right; }
+    .dialog-actions Button { margin-left: 1; }
+    """
+    BINDINGS = [("r", "refresh", "Refresh"), ("q", "quit", "Quit")]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="content"):
+            yield Static("Live status and the four actions needed to run your worker.", id="intro")
+            with Horizontal(id="statuses"):
+                yield self.card("Telegram", "Checking...", "Validating bot token", "telegram")
+                yield self.card("X session", "Checking...", "Checking login session", "x")
+                yield self.card("SSH + worker", "Checking...", "Looking for target", "workflow")
+            with Horizontal(id="actions"):
+                yield Button("SSH connection", id="connect", variant="primary")
+                yield Button("Telegram token", id="credentials")
+                yield Button("X login", id="xlogin")
+                yield Button("Start worker", id="worker", variant="success")
+            yield Static("Ready.", id="message")
+        yield Footer()
+
+    @staticmethod
+    def card(title: str, value: str, detail: str, ident: str) -> Static:
+        return Static(f"[status-title]{title}[/]\n[status-value]{value}[/]\n[status-detail]{detail}[/]",
+                      id=ident, classes="status", markup=True)
+
+    def on_mount(self) -> None:
+        self.refresh_status()
+
+    def action_refresh(self) -> None:
+        self.refresh_status()
+
+    def message(self, text: str) -> None:
+        self.query_one("#message", Static).update(text)
+
+    @work(thread=True, exclusive=True, group="health")
+    def refresh_status(self) -> None:
+        from .health import run_checks
+        self.call_from_thread(self.message, "Refreshing Telegram, X, SSH and worker status...")
+        report = run_checks()
+        t, x, w = report["telegram"], report["x_session"], report["workflow"]
+        service = str(w.get("service") or "not running")
+        running = service == "active" or service.startswith("running")
+        cards = {
+            "telegram": ("Telegram", "[green]Connected[/green]" if t.get("ok") else "[red]Needs setup[/red]", t.get("detail", "")),
+            "x": ("X session", "[green]Connected[/green]" if x.get("ok") else "[red]Needs login[/red]", x.get("detail", "")),
+            "workflow": ("SSH + worker", "[green]Worker running[/green]" if running else ("[yellow]SSH connected[/yellow]" if w.get("connected") else "[red]Not connected[/red]"), f"{w.get('username', '')}@{w.get('host', '')}" if w.get("connected") else w.get("detail", "Add SSH connection")),
+        }
+        for ident, (title, value, detail) in cards.items():
+            text = f"[status-title]{title}[/]\n[status-value]{value}[/]\n[status-detail]{detail}[/]"
+            self.call_from_thread(self.query_one(f"#{ident}", Static).update, text)
+        button = self.query_one("#worker", Button)
+        self.call_from_thread(setattr, button, "label", "Stop worker" if running else "Start worker")
+        self.call_from_thread(setattr, button, "variant", "error" if running else "success")
+        self.call_from_thread(self.message, "Status refreshed. Press R anytime to refresh.")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "connect":
+            self.push_screen(FormScreen("ssh"), self.connect_result)
+        elif event.button.id == "credentials":
+            self.push_screen(FormScreen("telegram"), self.credentials_result)
+        elif event.button.id == "xlogin":
+            self.login_x()
+        elif event.button.id == "worker":
+            self.control_worker("stop" if "Stop" in str(event.button.label) else "start")
+
+    def connect_result(self, values: dict[str, str] | None) -> None:
+        if values:
+            self.connect_ssh(values)
+
+    def credentials_result(self, values: dict[str, str] | None) -> None:
+        if values:
+            self.save_credentials(values)
+
+    @work(thread=True)
+    def connect_ssh(self, values: dict[str, str]) -> None:
+        from .remote import ConnectionProfile, bootstrap, save_profile, verify_connection
+        self.call_from_thread(self.message, "Connecting over SSH...")
+        try:
+            profile = ConnectionProfile(values["host"], values["username"], int(values["port"]))
+            if values["password"]:
+                bootstrap(profile.host, profile.port, profile.username, values["password"])
+            else:
+                verify_connection(profile)
+                save_profile(profile)
+            activity.record("connect", True, f"connected to {profile.username}@{profile.host}")
+            self.call_from_thread(self.message, "SSH connection saved successfully.")
+            self.refresh_status()
+        except Exception as exc:
+            activity.record("connect", False, str(exc))
+            self.call_from_thread(self.message, f"SSH connection failed: {exc}")
+
+    @work(thread=True)
+    def save_credentials(self, values: dict[str, str]) -> None:
+        from .health import check_bot_token
+        if not values["token"]:
+            self.call_from_thread(self.message, "Telegram bot token is required.")
+            return
+        self.call_from_thread(self.message, "Validating Telegram bot token...")
+        creds.save(values["token"], values["chat_id"])
+        result = check_bot_token(values["token"])
+        activity.record("creds", bool(result.get("ok")), "bot token validation completed")
+        self.call_from_thread(self.message, result.get("detail", "Credentials saved."))
+        self.refresh_status()
+
+    @work(thread=True)
+    def login_x(self) -> None:
+        from .session import xlogin
+        self.call_from_thread(self.message, "Opening Chrome. Complete the X login in the browser window...")
+        try:
+            xlogin(config.session_file_path(), config.browser_profile_dir())
+            activity.record("xlogin", True, "session saved")
+            self.call_from_thread(self.message, "X session captured successfully.")
+            self.refresh_status()
+        except Exception as exc:
+            activity.record("xlogin", False, str(exc))
+            self.call_from_thread(self.message, f"X login failed: {exc}")
+
+    @work(thread=True)
+    def control_worker(self, action: str) -> None:
+        from .worker import WorkerController
+        self.call_from_thread(self.message, f"{action.title()}ing worker...")
+        try:
+            result = WorkerController().run_action(action)
+            activity.record(f"control/{action}", True, f"worker {action}")
+            self.call_from_thread(self.message, result)
+            self.refresh_status()
+        except Exception as exc:
+            activity.record(f"control/{action}", False, str(exc))
+            self.call_from_thread(self.message, f"Worker action failed: {exc}")
 
 
 def run() -> int:
-    curses.wrapper(_main)
+    ManagerApp().run()
     return 0
