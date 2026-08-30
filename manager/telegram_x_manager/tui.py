@@ -18,6 +18,7 @@ class FormScreen(ModalScreen[dict[str, str] | None]):
         with Vertical(id="dialog"):
             yield Label("Connect to worker" if self.kind == "ssh" else "Telegram credentials", classes="dialog-title")
             if self.kind == "ssh":
+                yield Label("Use a normal address or an automatically detected Tailscale device.", id="ssh_hint")
                 yield Input(placeholder="Host or SSH alias", id="host")
                 yield Input(placeholder="Username (for example root)", id="username")
                 yield Input(value="22", placeholder="Port", id="port")
@@ -28,6 +29,23 @@ class FormScreen(ModalScreen[dict[str, str] | None]):
             with Horizontal(classes="dialog-actions"):
                 yield Button("Cancel", id="cancel")
                 yield Button("Save", id="submit", variant="primary")
+
+    def on_mount(self) -> None:
+        if self.kind != "ssh":
+            return
+        from .tailscale import preferred_termux_peer
+        peer = preferred_termux_peer()
+        if peer:
+            self.query_one("#host", Input).value = peer["ip"]
+            if peer["os"] == "android":
+                self.query_one("#port", Input).value = "8022"
+            self.query_one("#ssh_hint", Label).update(
+                f"Tailscale device found: {peer['name']} ({peer['ip']})"
+            )
+        else:
+            self.query_one("#ssh_hint", Label).update(
+                "No online Tailscale device detected. Enter an IP, hostname, or SSH alias."
+            )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "cancel":

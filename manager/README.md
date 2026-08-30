@@ -142,6 +142,11 @@ The home screen automatically shows Telegram, X session, SSH, and worker status.
 Use the four actions to connect SSH, save the Telegram token, log into X, and
 start or stop the remote worker. Press `R` to refresh and `Q` to quit.
 
+If Tailscale is installed and connected on the PC, the SSH form automatically
+finds an online Android peer, fills its Tailscale IP, and selects Termux port
+`8022`. The Android Tailscale app and the PC must be signed into the same
+tailnet. SSH transport remains pure Paramiko.
+
 Once the link is up and you've captured both the X session (`xlogin`) and the
 Telegram credentials (`creds`), one command pushes the worker to the VPS and
 starts it:
