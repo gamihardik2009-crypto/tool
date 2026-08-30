@@ -24,8 +24,13 @@ exec "$BASE/manager/.venv/bin/telegram-x-manager" tui "\$@"
 EOF
 chmod 755 "$BIN/X"
 
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  if [ -f "$rc" ] && ! grep -Fq "telegram-x-manager PATH" "$rc"; then
+    printf '\n# telegram-x-manager PATH\nexport PATH="%s:$PATH"\n' "$BIN" >> "$rc"
+  fi
+done
 case ":${PATH}:" in
   *":$BIN:"*) ;;
-  *) echo "Add this directory to PATH, then restart your terminal: $BIN" ;;
+  *) echo "Run this once in the current terminal: export PATH=\"$BIN:\$PATH\"" ;;
 esac
 echo "Installed. Start the manager from anywhere with: X"
