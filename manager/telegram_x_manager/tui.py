@@ -58,9 +58,10 @@ def _page(stdscr, title: str, body: str) -> None:
     lines = body.splitlines() or [""]
     for row, line in enumerate(lines[: curses.LINES - 3], 2):
         stdscr.addstr(row, 0, line[: curses.COLS - 1])
-    stdscr.addstr(curses.LINES - 1, 0, "Press any key to return"[: curses.COLS - 1])
+    stdscr.addstr(curses.LINES - 1, 0, "Press Esc to return"[: curses.COLS - 1])
     stdscr.refresh()
-    stdscr.getch()
+    while stdscr.getch() != 27:
+        pass
 
 
 def _main(stdscr) -> None:
