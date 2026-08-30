@@ -1,0 +1,18 @@
+# environment / secrets
+.env
+# python
+.venv/
+__pycache__/
+*.pyc
+# data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/*.log
+data/*.json
+# local manager settings and temporary archives
+.config/
+manager/.venv/
+manager/*.egg-info/
+*.tar.gz
+manager/**/__pycache__/

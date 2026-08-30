@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-x-manager"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["playwright>=1.44,<2", "tweetkit-x==0.3.0", "paramiko>=3.4,<6"]
+
+[project.scripts]
+telegram-x-manager = "telegram_x_manager.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -1,0 +1,3 @@
+# Core worker dependencies (portable — works on a plain VPS, Termux, any Linux).
+python-telegram-bot==22.5
+tweetkit-x==0.3.0

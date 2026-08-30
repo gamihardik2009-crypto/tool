@@ -1,0 +1,18 @@
+[Unit]
+Description=X browser session keeper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telegram-x
+Group=telegram-x
+WorkingDirectory=/opt/telegram-x
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/telegram-x/browsers
+ExecStart=/opt/telegram-x/.venv/bin/python /opt/telegram-x/session_keeper.py
+Restart=on-failure
+RestartSec=30
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

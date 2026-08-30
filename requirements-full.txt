@@ -1,0 +1,5 @@
+# Core worker deps PLUS Playwright (only needed for the VPS session keeper,
+# which refreshes X cookies headlessly). The plain worker does not need this.
+python-telegram-bot==22.5
+tweetkit-x==0.3.0
+playwright>=1.44,<2
