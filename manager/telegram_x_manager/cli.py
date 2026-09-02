@@ -131,6 +131,31 @@ def add_creds_parser(sub) -> None:
     p.add_argument("--chat-id", help="Optional Telegram group id (negative number)")
     p.set_defaults(func=cmd_creds)
 
+def add_tailscale_parser(sub) -> None:
+    p = sub.add_parser("tailscale", help="Configure and test the Tailscale credential link")
+    p.add_argument("action", choices=["status", "configure", "test", "sync"])
+    p.add_argument("--address", help="VPS Tailscale IP, MagicDNS hostname, or URL")
+    p.add_argument("--token", help="Application sync token (stored locally with mode 0600)")
+    p.set_defaults(func=cmd_tailscale)
+
+def cmd_tailscale(args) -> int:
+    from . import tailscale, sync
+    try:
+        if args.action == "status":
+            i = tailscale.local_info(); print(f"installed: {'yes' if i.installed else 'no'}\nconnected: {'yes' if i.connected else 'no'}\nip: {i.ip or '-'}\nhostname: {i.hostname or '-'}\n{i.detail}"); return 0 if i.installed and i.connected else 1
+        if args.action == "configure":
+            if not args.address or not args.token: raise RuntimeError("--address and --token are required")
+            sync.save_settings(args.address, args.token); print("Tailscale VPS address and sync token saved."); return 0
+        if args.action == "test":
+            s = sync.load_settings(); import urllib.request
+            address = str(s.get("address", "")).strip()
+            if not address: raise RuntimeError("VPS Tailscale address is not configured.")
+            base = address if "://" in address else "http://" + address
+            urllib.request.urlopen(base.rstrip("/") + "/health", timeout=10).read(); print("VPS credential service is reachable through Tailscale."); return 0
+        print(sync.sync_session()); return 0
+    except Exception as exc:
+        print(f"Tailscale operation failed: {exc}"); return 1
+
 
 def cmd_creds(args) -> int:
     import getpass
@@ -272,6 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_xlogin_parser(sub)
     add_connect_parser(sub)
     add_creds_parser(sub)
+    add_tailscale_parser(sub)
     add_health_parser(sub)
     add_status_parser(sub)
     add_deploy_parser(sub)

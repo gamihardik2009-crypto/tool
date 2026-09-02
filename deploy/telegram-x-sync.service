@@ -1,0 +1,17 @@
+[Unit]
+Description=Telegram-X private Tailscale credential receiver
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=telegram-x
+Group=telegram-x
+WorkingDirectory=/opt/telegram-x
+EnvironmentFile=/etc/telegram-x/sync.env
+ExecStart=/opt/telegram-x/.venv/bin/python /opt/telegram-x/credential_receiver.py
+Restart=on-failure
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

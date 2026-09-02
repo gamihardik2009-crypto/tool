@@ -22,6 +22,7 @@ WORKER_FILES = [
     "config.py", "session_keeper.py",
     "requirements.txt", "requirements-full.txt", ".env.example",
     "setup.sh", "run.sh",
+    "credential_receiver.py",
 ]
 
 REMOTE_DIR = "~/telegram-x"

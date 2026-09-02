@@ -94,3 +94,6 @@ def activity_path() -> Path:
 def creds_path() -> Path:
     """Local credentials file (Telegram bot token + optional chat id)."""
     return state_dir() / "credentials.json"
+
+def sync_settings_path() -> Path:
+    return state_dir() / "tailscale-sync.json"
