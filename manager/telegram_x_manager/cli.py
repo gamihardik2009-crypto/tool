@@ -133,7 +133,7 @@ def add_creds_parser(sub) -> None:
 
 def add_tailscale_parser(sub) -> None:
     p = sub.add_parser("tailscale", help="Configure and test the Tailscale credential link")
-    p.add_argument("action", choices=["status", "configure", "test", "sync"])
+    p.add_argument("action", choices=["setup", "status", "configure", "test", "sync"])
     p.add_argument("--address", help="VPS Tailscale IP, MagicDNS hostname, or URL")
     p.add_argument("--token", help="Application sync token (stored locally with mode 0600)")
     p.set_defaults(func=cmd_tailscale)
@@ -141,6 +141,8 @@ def add_tailscale_parser(sub) -> None:
 def cmd_tailscale(args) -> int:
     from . import tailscale, sync
     try:
+        if args.action == "setup":
+            print(tailscale.setup(args.token)); return 0
         if args.action == "status":
             i = tailscale.local_info(); print(f"installed: {'yes' if i.installed else 'no'}\nconnected: {'yes' if i.connected else 'no'}\nip: {i.ip or '-'}\nhostname: {i.hostname or '-'}\n{i.detail}"); return 0 if i.installed and i.connected else 1
         if args.action == "configure":

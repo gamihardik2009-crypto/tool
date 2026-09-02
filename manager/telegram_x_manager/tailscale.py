@@ -47,6 +47,30 @@ class TailscaleInfo:
     hostname: str = ""
     detail: str = ""
 
+def setup(auth_key: str | None = None) -> str:
+    """Install/start Tailscale where possible, then authenticate with an auth key."""
+    binary = shutil.which("tailscale")
+    if not binary:
+        if shutil.which("pkg"):
+            try:
+                subprocess.run(["pkg", "install", "-y", "tailscale"], check=True, timeout=180)
+                binary = shutil.which("tailscale") or "tailscale"
+            except (OSError, subprocess.CalledProcessError) as exc:
+                raise RuntimeError("Tailscale is unavailable in this Termux repository; install the Tailscale Android app, then rerun setup.") from exc
+        elif not shutil.which("curl"):
+            raise RuntimeError("Tailscale is not installed and curl is unavailable.")
+        else:
+            subprocess.run(["sh", "-c", "curl -fsSL https://tailscale.com/install.sh | sh"], check=True, timeout=180)
+            binary = shutil.which("tailscale") or "tailscale"
+    if shutil.which("systemctl"):
+        subprocess.run(["systemctl", "enable", "--now", "tailscaled"], check=False, timeout=30)
+    cmd = [binary, "up"]
+    if auth_key: cmd += ["--auth-key", auth_key]
+    try: subprocess.run(cmd, check=True, timeout=120)
+    except subprocess.CalledProcessError as exc: raise RuntimeError("Tailscale needs authorization. Run `tailscale up` and follow the login URL, or provide --auth-key.") from exc
+    info = local_info()
+    return f"Tailscale connected: {info.ip or info.hostname}"
+
 def local_info() -> TailscaleInfo:
     binary = shutil.which("tailscale")
     if not binary:
